@@ -55,7 +55,6 @@ process FORMAT_SUMSTATS {
         if(c["P"]) pval=\$c["P"]; else pval=exp(-\$c["LOG10P"] * log(10));
         if(c["N"]) n=\$c["N"]; else n=\$c["NCA"] + \$c["NCO"];
 
-        # Priority logic for EAF: checks EAF, then EAFCO, then EAFCA
         if (c["EAF"] && \$c["EAF"] != "NA" && \$c["EAF"] != "") eaf_val = \$c["EAF"];
         else if (c["EAFCO"] && \$c["EAFCO"] != "NA" && \$c["EAFCO"] != "") eaf_val = \$c["EAFCO"];
         else if (c["EAFCA"] && \$c["EAFCA"] != "NA" && \$c["EAFCA"] != "") eaf_val = \$c["EAFCA"];
@@ -93,47 +92,30 @@ process SPLIT_SUMSTATS {
 process MATCH_DBSNP_PARALLEL {
     tag "${cohort}_${ancestry}_chr${chr_num}"
     memory '8 GB'
-    cpus 1
 
     input:
     tuple val(cohort), val(ancestry), val(build), path(chr_file)
     path dbSNP_dir
 
     output:
-    tuple val(cohort), val(ancestry), path("matched_chr_${chr_num}.txt"), emit: matched_chr
+    tuple val(cohort), val(ancestry), val(build), path("matched_chr_${chr_num}.txt"), emit: matched_chr
 
     script:
-    // This allows both the tag and the ref_file path to use the chr number
     chr_num = chr_file.baseName.replaceAll(/split_chr_/, "")
     def ref_file = "${dbSNP_dir}/dbSNP_chr${chr_num}.txt"
-    
     if ( build == "b37" )
         """
-        awk 'NR==FNR {
-            marker[\$5,\$6,\$2,\$3]=\$4; rsid[\$5,\$6,\$2,\$3]=\$1; next
-        }
-        {
-            if ((\$1,\$2,\$5,\$6) in marker) 
-                print \$0,marker[\$1,\$2,\$5,\$6],rsid[\$1,\$2,\$5,\$6];
-            else if ((\$1,\$2,\$6,\$5) in marker) 
-                print \$0,marker[\$1,\$2,\$6,\$5],rsid[\$1,\$2,\$6,\$5];
-            else 
-                print \$0,"missing","missing";
-        }' ${ref_file} ${chr_file} > matched_chr_${chr_num}.txt
+        awk 'NR==FNR { marker[\$5,\$6,\$2,\$3]=\$4; rsid[\$5,\$6,\$2,\$3]=\$1; next }
+        { if ((\$1,\$2,\$5,\$6) in marker) print \$0,marker[\$1,\$2,\$5,\$6],rsid[\$1,\$2,\$5,\$6];
+          else if ((\$1,\$2,\$6,\$5) in marker) print \$0,marker[\$1,\$2,\$6,\$5],rsid[\$1,\$2,\$6,\$5];
+          else print \$0,"missing","missing"; }' ${ref_file} ${chr_file} > matched_chr_${chr_num}.txt
         """
     else
         """
-        awk 'NR==FNR {
-            marker[\$11,\$12,\$8,\$9]=\$4; rsid[\$11,\$12,\$8,\$9]=\$1; next
-        }
-        {
-            if ((\$1,\$2,\$5,\$6) in marker) 
-                print \$0,marker[\$1,\$2,\$5,\$6],rsid[\$1,\$2,\$5,\$6];
-            else if ((\$1,\$2,\$6,\$5) in marker) 
-                print \$0,marker[\$1,\$2,\$6,\$5],rsid[\$1,\$2,\$6,\$5];
-            else 
-                print \$0,"missing","missing";
-        }' ${ref_file} ${chr_file} > matched_chr_${chr_num}.txt
+        awk 'NR==FNR { marker[\$11,\$12,\$8,\$9]=\$4; rsid[\$11,\$12,\$8,\$9]=\$1; next }
+        { if ((\$1,\$2,\$5,\$6) in marker) print \$0,marker[\$1,\$2,\$5,\$6],rsid[\$1,\$2,\$5,\$6];
+          else if ((\$1,\$2,\$6,\$5) in marker) print \$0,marker[\$1,\$2,\$6,\$5],rsid[\$1,\$2,\$6,\$5];
+          else print \$0,"missing","missing"; }' ${ref_file} ${chr_file} > matched_chr_${chr_num}.txt
         """
 }
 
@@ -142,10 +124,10 @@ process MERGE_SUMSTATS {
     publishDir "${params.resultsDir}/matched", mode: 'copy'
 
     input:
-    tuple val(cohort), val(ancestry), path(matched_files)
+    tuple val(cohort), val(ancestry), val(build), path(matched_files)
 
     output:
-    tuple val(cohort), val(ancestry), path("${cohort}_${ancestry}_matched_full.txt")
+    tuple val(cohort), val(ancestry), val(build), path("${cohort}_${ancestry}_matched_full.txt"), emit: merged_file
 
     script:
     """
@@ -159,27 +141,16 @@ process MUNGE_SUMSTATS {
     publishDir "${params.resultsDir}/munged", mode: 'copy'
 
     input:
-    tuple val(cohort), val(ancestry), path(matched_file)
+    tuple val(cohort), val(ancestry), val(build), path(matched_file)
 
     output:
     tuple val(cohort), val(ancestry), path("${cohort}_${ancestry}_munged.sumstats.gz"), emit: munged_file
 
     script:
     """
-    # 1. Sanitize the file: Remove carriage returns and ensure standard spacing
-    # This fixes the "No objects to concatenate" error caused by hidden characters
     cat ${matched_file} | tr -d '\\r' | awk '\$1=\$1' > cleaned.txt
+    if grep -q -w "OR" cleaned.txt; then SIGNED="OR,1"; else SIGNED="BETA,0"; fi
 
-    # Detect if OR column exists to set the signed-sumstats flag
-    # In Step 1 we converted OR to BETA, but if you want to keep the logic:
-    if grep -q -w "OR" cleaned.txt; then
-        SIGNED="OR,1"
-    else
-        SIGNED="BETA,0"
-    fi
-
-    # Standardize the environment further
-    # Explicitly use the python version inside the ldsc conda environment
     python ${params.ldsc_path}/munge_sumstats.py \
         --sumstats cleaned.txt \
         --out ${cohort}_${ancestry}_munged \
@@ -227,53 +198,112 @@ process GENERATE_REPORT {
     script:
     """
     echo "Cohort_Ancestry: Intercept = Intercept, SD = SD, 95% CI = [Lower, Upper]" > LDSCintercept_summary.txt
-    
     for log_file in ${logs}; do
-        # Extract Intercept and SD
         intercept=\$(grep "Intercept:" \$log_file | awk '{print \$2}' | head -1)
         sd=\$(grep "Intercept:" \$log_file | awk '{print \$3}' | sed 's/[()]//g' | head -1)
-        
-        # Calculate 95% CI using awk
         echo | awk -v ival="\$intercept" -v s="\$sd" -v name="\$log_file" 'BEGIN { OFS=" " } { if (ival == "" || s == "") { printf "%s: Intercept data missing in log\\n", name } else { low = ival - (1.96 * s); high = ival + (1.96 * s); printf "%s: Intercept = %f, SD = %f, 95%% CI = [%.6f, %.6f]\\n", name, ival, s, low, high } }' >> LDSCintercept_summary.txt
     done
     """
 }
 
+process QC_PLOTS {
+    tag "${cohort}_${ancestry}"
+    publishDir "${params.resultsDir}/plots", mode: 'copy', pattern: "*.png"
+    publishDir "${params.resultsDir}/lambda", mode: 'copy', pattern: "*.lambda.txt"
 
-// --- Workflow ---
+    input:
+    tuple val(cohort), val(ancestry), val(build), path(matched_file)
+
+    output:
+    path "*.png"
+    path "${cohort}_${ancestry}_lambda.txt", emit: lambda_val
+
+    script:
+    """
+    #!/usr/bin/env Rscript
+    library(qqman)
+    library(data.table)
+    library(dplyr)
+
+    # 1. Load data
+    df <- fread("${matched_file}", data.table = FALSE)
+    
+    # 2. Clean and Format (Crucial for Manhattan plots)
+    df\$P <- as.numeric(df\$P)
+    df <- df[!is.na(df\$P) & df\$P > 0 & df\$P <= 1, ]
+
+    # Convert CHR to numeric (Remove 'chr' prefix if present, change X to 23)
+    df\$CHR <- gsub("chr", "", as.character(df\$CHR), ignore.case = TRUE)
+    df\$CHR <- gsub("X", "23", df\$CHR, ignore.case = TRUE)
+    df\$CHR <- as.numeric(df\$CHR)
+    
+    # Filter to keep only standard chromosomes to avoid plotting errors
+    df <- df[!is.na(df\$CHR) & df\$CHR >= 1 & df\$CHR <= 23, ]
+
+    if (nrow(df) > 0) {
+        # 3. Lambda Calculation
+        chisq <- qchisq(1 - df\$P, df = 1)
+        lambda <- median(chisq) / qchisq(0.5, df = 1)
+        write.table(data.frame(Cohort="${cohort}", Ancestry="${ancestry}", Lambda=round(lambda, 3)), 
+                    file="${cohort}_${ancestry}_lambda.txt", sep="\t", quote=FALSE, row.names=FALSE)
+
+        # 4. QQ Plot (This is working for you)
+        png("${cohort}_${ancestry}_QQ.png", width=800, height=600)
+        qqman::qq(df\$P, main=paste("QQ Plot:", "${cohort}", "${ancestry}"))
+        dev.off()
+
+        # 5. Manhattan Plot (Using the robust qqman version)
+        # We use a try() block to catch errors so the rest of the pipeline can finish
+        png("${cohort}_${ancestry}_Manhattan.png", width=1200, height=600)
+        result <- try(
+            qqman::manhattan(df, 
+                chr="CHR", 
+                bp="POS", 
+                p="P", 
+                snp="SNP", 
+                main=paste("Manhattan:", "${cohort}", "${ancestry}"),
+                suggestiveline = 1e-05, 
+                genomewideline = 5e-08,
+                col = c("blue4", "skyblue")
+            )
+        )
+        if(class(result) == "try-error") print("Manhattan plot failed - check log")
+        dev.off()
+    }
+    """    
+}
+
+
+process COMBINE_LAMBDAS {
+    publishDir "${params.resultsDir}", mode: 'copy'
+    input: path all_lambdas 
+    output: path "all_cohorts_lambda_summary.txt"
+    script:
+    """
+    echo -e "Cohort\\tAncestry\\tLambda" > all_cohorts_lambda_summary.txt
+    tail -q -n +2 ${all_lambdas} >> all_cohorts_lambda_summary.txt
+    """
+}
+
 workflow {
     dbSNP_dir = file(params.dbSNP_dir)
 
-    // Setup input channel from CSV
     cohort_ch = Channel
         .fromPath(params.input_csv)
         .splitCsv(header: true)
         .map { row -> tuple(row.cohort, row.ancestry, file("${params.cohorts_dir}/${row.rel_path}")) }
-        // .take(1)  // Uncomment this to test on the first cohort only
 
-    // 1. Standardize formatting
-    formatted      = FORMAT_SUMSTATS(cohort_ch)
+    FORMAT_SUMSTATS(cohort_ch)
+    SPLIT_SUMSTATS(FORMAT_SUMSTATS.out.formatted_stats)
+    MATCH_DBSNP_PARALLEL(SPLIT_SUMSTATS.out.chr_files.transpose(), dbSNP_dir)
     
-    // 2. Split into chromosomes for parallel matching
-    split_ch       = SPLIT_SUMSTATS(formatted.formatted_stats)
-    
-    // 3. Match against dbSNP reference by chromosome
-    matching_input = split_ch.chr_files.transpose()
-    matched_ch     = MATCH_DBSNP_PARALLEL(matching_input, dbSNP_dir)
-    
-    // 4. Group chromosome files back together and merge into one file per cohort
-    merge_input    = matched_ch.matched_chr.groupTuple(by: [0,1])
-    merged_output  = MERGE_SUMSTATS(merge_input)
+    merge_input = MATCH_DBSNP_PARALLEL.out.matched_chr.groupTuple(by: [0,1,2])
+    MERGE_SUMSTATS(merge_input)
 
-    // 5. Munge sumstats for LDSC (Step 1 of your original LDSC script)
-    // We pass the tuple [cohort, ancestry, merged_file]
-    munged_ch      = MUNGE_SUMSTATS(merged_output)
-
-    // 6. Run LDSC Heritability/Intercept (Step 2 of your original LDSC script)
-    ldsc_logs      = LDSC_H2(munged_ch.munged_file)
-
-    // 7. Generate final summary report
-    // .collect() waits for all cohorts to finish and passes all logs as a list
-    GENERATE_REPORT(ldsc_logs.collect())
+    MUNGE_SUMSTATS(MERGE_SUMSTATS.out.merged_file)
+    LDSC_H2(MUNGE_SUMSTATS.out.munged_file)
+    GENERATE_REPORT(LDSC_H2.out.log_file.collect())
+	
+    QC_PLOTS(MERGE_SUMSTATS.out.merged_file)
+    COMBINE_LAMBDAS(QC_PLOTS.out.lambda_val.collect())
 }
-

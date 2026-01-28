@@ -38,6 +38,4 @@ PGC,EUR,pgc/strict/daner_COL3NES1_STRICT
 RAINE,EUR,raine/RaineStudy_YSR_20240808.regenie
 TEDS,EUR,teds/TEDS_adolDep_EUR_160724
 TRAILS,EUR,trails/TRAILS_YSR_06122024.regenie
-UKB,EUR,ukb/ukb-regenie-nf/sumstats/EUR-bt-BINARY_PHENO_STRICT/ukb_adolonset_strict_binary_EUR.regenie
-UKB,AFR,ukb/ukb-regenie-nf/sumstats/AFR-bt-BINARY_PHENO_STRICT/ukb_imp_v3.qc-adol_onset_strict-AFR-bt-BINARY_PHENO_STRICT-rf_hgdp1kg_clusters-noPGC.regenie
-UKB,SAS,ukb/ukb-regenie-nf/sumstats/SAS-bt-BINARY_PHENO_STRICT/ukb_imp_v3.qc-adol_onset_strict-SAS-bt-BINARY_PHENO_STRICT-rf_hgdp1kg_clusters-noPGC.regenie
+UKB,EUR,ukb/ukb_kwong/AOD/ukb_imp_v3.qc-cidi_strict-EUR-bt-AOD_GWAS-rf_hgdp1kg_clusters-noPGC.remove2.regenie
