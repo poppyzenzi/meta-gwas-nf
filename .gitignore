@@ -1,0 +1,25 @@
+# Ignore GWAS data files
+*.regenie
+*.gz
+*.txt
+*.tsv
+*.meta
+*.TBL
+*.remove2
+
+# Nextflow internal files
+.nextflow/
+.nextflow.log*
+work/
+results/
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+
+# Keep scripts and documentation
+!*.sh
+!*.py
+!*.R
+!README.md
+!cohort_list.csv
