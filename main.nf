@@ -301,43 +301,33 @@ process PREP_MR_MEGA {
     """
     awk '
     BEGIN { FS="[[:space:]\\t]+"; OFS="\\t" }
-    
-    # 1. Process Header
+
     NR==1 {
-        for (i=1; i<=NF; i++) {
-            col[\$i] = i
-        }
-        # Print the exact header required by MR-MEGA
+        for (i=1; i<=NF; i++) col[\$i] = i
         print "MARKERNAME", "MARKER_build37", "EA", "NEA", "EAFCO", "N", "OR", "SE", "CHR", "POS", "OR_95L", "OR_95U"
         next
     }
-    
-    # 2. Process Data Lines
+
     {
-        # Skip rows where rsID_build37 is missing or invalid
         rsid = \$(col["rsID_build37"])
-        if (rsid == "" || rsid == "NA" || rsid == "missing" || rsid == "no_match_in_build37") next
+        # 1. Stricter RSID filtering: Skip "no_rsid" and "no_match..."
+        if (rsid == "" || rsid == "NA" || rsid == "no_rsid" || rsid == "no_match_in_build37") next
         
-        # Pull required values using column map
         marker_b37 = \$(col["MARKER_build37"])
-        ea         = \$(col["EA"])
-        nea        = \$(col["NEA"])
-        eaf        = \$(col["EAF"])
-        n_size     = \$(col["N"])
-        beta       = \$(col["BETA"])
-        se         = \$(col["SE"])
-        
-        # Split CHR and POS from MARKER_build37 (e.g., 12:170339:C:A)
         split(marker_b37, a, ":")
         chr = a[1]; pos = a[2]
+
+        # 2. Skip non-autosomal chromosomes (X, Y, MT) to avoid "mismatch" errors
+        if (chr == "X" || chr == "Y" || chr == "MT" || chr == "23") next
+
+        ea = \$(col["EA"]); nea = \$(col["NEA"])
+        eaf = \$(col["EAF"]); n_size = \$(col["N"])
+        beta = \$(col["BETA"]); se = \$(col["SE"])
         
-        # Math: OR and Confidence Intervals
-        # awk exp() handles floating point beta correctly
         or_val = exp(beta)
         or_l   = or_val * exp(-1.96 * se)
         or_u   = or_val * exp(1.96 * se)
         
-        # Print in the MR-MEGA expected order
         print rsid, marker_b37, ea, nea, eaf, n_size, or_val, se, chr, pos, or_l, or_u
     }
     ' ${matched_file} > ${cohort}_${ancestry}_mrmega_ready.txt
