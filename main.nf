@@ -6,6 +6,8 @@ params.cohorts_dir = '/exports/igmm/eddie/GenScotDepression/users/poppy/aGWAS/co
 params.outdir      = "${projectDir}/results/formatted_sumstats"
 params.resultsDir  = "${projectDir}/results"
 params.dbSNP_dir   = "/exports/igmm/eddie/GenScotDepression/users/poppy/aGWAS/checks/ref_panels/split_dbSNP"
+params.mrmega_path = "/exports/igmm/eddie/GenScotDepression/users/poppy/aGWAS/MR-MEGA"
+
 
 // --- Processes ---
 
@@ -14,10 +16,10 @@ process FORMAT_SUMSTATS {
     publishDir "${params.outdir}", mode: 'copy'
 
     input:
-    tuple val(cohort), val(ancestry), path(raw_sumstats)
+    tuple val(cohort), val(ancestry), val(ascertainment), path(raw_sumstats)
 
     output:
-    tuple val(cohort), val(ancestry), val(build), path("${cohort}_${ancestry}_${build}_formatted.txt"), emit: formatted_stats
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path("${cohort}_${ancestry}_${build}_formatted.txt"), emit: formatted_stats
 
     script:
     build = (cohort =~ /NORDIC|TRAILS|RAINE|GLAD/) ? "b38" : "b37"
@@ -78,10 +80,10 @@ process SPLIT_SUMSTATS {
     tag "${cohort}_${ancestry}"
     
     input:
-    tuple val(cohort), val(ancestry), val(build), path(formatted_txt)
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path(formatted_txt)
 
     output:
-    tuple val(cohort), val(ancestry), val(build), path("split_chr_*.txt"), emit: chr_files
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path("split_chr_*.txt"), emit: chr_files
 
     script:
     """
@@ -94,11 +96,11 @@ process MATCH_DBSNP_PARALLEL {
     memory '8 GB'
 
     input:
-    tuple val(cohort), val(ancestry), val(build), path(chr_file)
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path(chr_file)
     path dbSNP_dir
 
     output:
-    tuple val(cohort), val(ancestry), val(build), path("matched_chr_${chr_num}.txt"), emit: matched_chr
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path("matched_chr_${chr_num}.txt"), emit: matched_chr
 
     script:
     chr_num = chr_file.baseName.replaceAll(/split_chr_/, "")
@@ -124,10 +126,10 @@ process MERGE_SUMSTATS {
     publishDir "${params.resultsDir}/matched", mode: 'copy'
 
     input:
-    tuple val(cohort), val(ancestry), val(build), path(matched_files)
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path(matched_files)
 
     output:
-    tuple val(cohort), val(ancestry), val(build), path("${cohort}_${ancestry}_matched_full.txt"), emit: merged_file
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path("${cohort}_${ancestry}_matched_full.txt"), emit: merged_file
 
     script:
     """
@@ -141,7 +143,7 @@ process MUNGE_SUMSTATS {
     publishDir "${params.resultsDir}/munged", mode: 'copy'
 
     input:
-    tuple val(cohort), val(ancestry), val(build), path(matched_file)
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path(matched_file)
 
     output:
     tuple val(cohort), val(ancestry), path("${cohort}_${ancestry}_munged.sumstats.gz"), emit: munged_file
@@ -212,7 +214,7 @@ process QC_PLOTS {
     publishDir "${params.resultsDir}/lambda", mode: 'copy', pattern: "*.lambda.txt"
 
     input:
-    tuple val(cohort), val(ancestry), val(build), path(matched_file)
+    tuple val(cohort), val(ancestry), val(build), val(ascertainment), path(matched_file)
 
     output:
     path "*.png"
@@ -247,12 +249,12 @@ process QC_PLOTS {
         write.table(data.frame(Cohort="${cohort}", Ancestry="${ancestry}", Lambda=round(lambda, 3)), 
                     file="${cohort}_${ancestry}_lambda.txt", sep="\t", quote=FALSE, row.names=FALSE)
 
-        # 4. QQ Plot (This is working for you)
+        # 4. QQ Plot
         png("${cohort}_${ancestry}_QQ.png", width=800, height=600)
         qqman::qq(df\$P, main=paste("QQ Plot:", "${cohort}", "${ancestry}"))
         dev.off()
 
-        # 5. Manhattan Plot (Using the robust qqman version)
+        # 5. Manhattan Plot (Using qqman)
         # We use a try() block to catch errors so the rest of the pipeline can finish
         png("${cohort}_${ancestry}_Manhattan.png", width=1200, height=600)
         result <- try(
@@ -285,19 +287,100 @@ process COMBINE_LAMBDAS {
     """
 }
 
+
+process PREP_MR_MEGA {
+    tag "${cohort}_${ancestry}"
+
+    input:
+    tuple val(cohort), val(ancestry), val(ascertainment), val(build), path(matched_file)
+
+    output:
+    tuple val(cohort), val(ancestry), path("${cohort}_${ancestry}_mrmega_ready.txt"), emit: mrmega_ready
+
+    script:
+    """
+    awk '
+    BEGIN { FS="[[:space:]\\t]+"; OFS="\\t" }
+    
+    # 1. Process Header
+    NR==1 {
+        for (i=1; i<=NF; i++) {
+            col[\$i] = i
+        }
+        # Print the exact header required by MR-MEGA
+        print "MARKERNAME", "MARKER_build37", "EA", "NEA", "EAFCO", "N", "OR", "SE", "CHR", "POS", "OR_95L", "OR_95U"
+        next
+    }
+    
+    # 2. Process Data Lines
+    {
+        # Skip rows where rsID_build37 is missing or invalid
+        rsid = \$(col["rsID_build37"])
+        if (rsid == "" || rsid == "NA" || rsid == "missing" || rsid == "no_match_in_build37") next
+        
+        # Pull required values using column map
+        marker_b37 = \$(col["MARKER_build37"])
+        ea         = \$(col["EA"])
+        nea        = \$(col["NEA"])
+        eaf        = \$(col["EAF"])
+        n_size     = \$(col["N"])
+        beta       = \$(col["BETA"])
+        se         = \$(col["SE"])
+        
+        # Split CHR and POS from MARKER_build37 (e.g., 12:170339:C:A)
+        split(marker_b37, a, ":")
+        chr = a[1]; pos = a[2]
+        
+        # Math: OR and Confidence Intervals
+        # awk exp() handles floating point beta correctly
+        or_val = exp(beta)
+        or_l   = or_val * exp(-1.96 * se)
+        or_u   = or_val * exp(1.96 * se)
+        
+        # Print in the MR-MEGA expected order
+        print rsid, marker_b37, ea, nea, eaf, n_size, or_val, se, chr, pos, or_l, or_u
+    }
+    ' ${matched_file} > ${cohort}_${ancestry}_mrmega_ready.txt
+    """
+}
+
+
+process RUN_MR_MEGA {
+    publishDir "${params.resultsDir}/meta_analysis/mrmega", mode: 'copy'
+    
+    input:
+    path file_list
+    path "input_files/*" // Collects all files into a subfolder for MR-MEGA to find
+
+    output:
+    path "cross_ancestry_results*", emit: results
+
+    script:
+    """
+    ${params.mrmega_path}/MR-MEGA --pc 4 \
+        --filelist ${file_list} \
+        --name_eaf EAFCO \
+        --name_chr CHR \
+        --name_pos POS \
+        --out cross_ancestry_results
+    """
+}
+
+
+
 workflow {
     dbSNP_dir = file(params.dbSNP_dir)
 
     cohort_ch = Channel
         .fromPath(params.input_csv)
         .splitCsv(header: true)
-        .map { row -> tuple(row.cohort, row.ancestry, file("${params.cohorts_dir}/${row.rel_path}")) }
+        .map { row -> tuple(row.cohort, row.ancestry, row.ascertainment, file("${params.cohorts_dir}/${row.rel_path}")) }
 
     FORMAT_SUMSTATS(cohort_ch)
     SPLIT_SUMSTATS(FORMAT_SUMSTATS.out.formatted_stats)
     MATCH_DBSNP_PARALLEL(SPLIT_SUMSTATS.out.chr_files.transpose(), dbSNP_dir)
     
-    merge_input = MATCH_DBSNP_PARALLEL.out.matched_chr.groupTuple(by: [0,1,2])
+    merge_input = MATCH_DBSNP_PARALLEL.out.matched_chr.groupTuple(by: [0,1,2,3])
     MERGE_SUMSTATS(merge_input)
 
     MUNGE_SUMSTATS(MERGE_SUMSTATS.out.merged_file)
@@ -306,4 +389,15 @@ workflow {
 	
     QC_PLOTS(MERGE_SUMSTATS.out.merged_file)
     COMBINE_LAMBDAS(QC_PLOTS.out.lambda_val.collect())
+
+    mrmega_prep_ch = PREP_MR_MEGA(MERGE_SUMSTATS.out.merged_file)
+    
+    // Create the file list for MR-MEGA: [Path, CohortName]
+    mrmega_list = mrmega_prep_ch.mrmega_ready
+    .map { cohort, ancestry, file -> "input_files/${file.name}\t${cohort}_${ancestry}" }
+    .collectFile(name: 'mrmega_input_list.txt', newLine: true)
+
+
+    RUN_MR_MEGA(mrmega_list, mrmega_prep_ch.mrmega_ready.map{it[2]}.collect())
+
 }
