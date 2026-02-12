@@ -8,6 +8,10 @@ ADDH,AFR,addhealth/sumstats/AFR_case5.regenie_new,prospective
 ADDH,AMR,addhealth/sumstats/AMR_case5.regenie_new,prospective
 ADDH,EAS,addhealth/sumstats/EAS_case5.regenie_new,prospective
 AGDS,EUR,agds/AGDS_QSKIN_adol_dep_merged_withP_QCed.regenie,retrospective
+ALLOFUS,EUR,allofus/EUR_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
+ALLOFUS,AMR,allofus/AMR_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
+ALLOFUS,AFR,allofus/AFR_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
+ALLOFUS,EAS,allofus/EAS_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
 ALSPAC,EUR,alspac/output/alspac_P_adoldep.regenie,prospective
 BHRC,AMR,bhrc/BHRC_adoldep_14062024.txt,prospective
 BLTS,EUR,blts/BLTS_SPHERE_adol_dep_withP_QCed.regenie,prospective
@@ -29,8 +33,8 @@ INSCHOOL_W3,EUR,inschool/INShcoolw3_SDQ_11072024_N.txt,prospective
 JANSSEN,EUR,janssen/daner_trd1_dgage6_int93dgage_vs_strict_control.meta,retrospective
 LIFELINES_AFFY,EUR,lifelines/LL_AdolDep_RetroStrict_AFFY_PAdded_EUR_25102024.txt,retrospective
 LIFELINES_GSA,EUR,lifelines/LL_AdolDep_RetroStrict_GSA_PAdded_EUR_25102024.txt,retrospective
-MCS,EUR,mcs/SMFQ/EUR/MCS_SMFQ_EUR_180624_N.txt,prospective
-MCS,SAS,mcs/SMFQ/SAS/MCS_SMFQ_SAS_180624_N.txt,prospective
+MCS,EUR,mcs/SMFQ/EUR/MCS_SMFQ_EUR_corrected.txt,prospective
+MCS,SAS,mcs/SMFQ/SAS/MCS_SMFQ_SAS_corrected.txt,prospective
 MOBA,EUR,moba/MoBa_Results_toshare/MoBa_sMFQ_16082024.txt,prospective
 MUSP,EUR,musp/MUSP_DEPRESSION_111224,prospective
 NORDIC_LOO,EUR,nordic/METAANALYSIS_LOO_NOR_CHR_BP.TBL,register-based
