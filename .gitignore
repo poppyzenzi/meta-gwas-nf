@@ -12,6 +12,7 @@
 .nextflow.log*
 work/
 results/
+arxiv/
 
 # Ignore logs and temporary files
 *.log
