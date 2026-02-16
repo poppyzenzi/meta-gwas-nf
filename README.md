@@ -5,6 +5,8 @@ This repository contains a Nextflow pipeline to QC and meta-analyse multi-ancest
 - ancestry-stratified and phenotype ascertainment-stratiefied meta-analyses with `METAL`
 - a series of leave-one-out meta-analyses for downstream methods like PRS and MR
 
+The pipeline is configured to run on the `Eddie` HPCC system which uses `SGE` job scheduling. After starting an interactive session in `tmux`, load the Nexflow module: `module load roslin/nextflow/25.10.2`
+
 The pipeline is controlled by the `master.nf` workflow which calls two subworkflows:
 1. `processor.nf` which performs all pre-meta-analysis QC formatting and diagnostics
 2. `analyst.nf` which performs the meta-analyses and post-hoc QC

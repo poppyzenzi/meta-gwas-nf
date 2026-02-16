@@ -10,7 +10,7 @@ workflow {
     dbSNP_dir = file(params.dbSNP_dir)
 
     // input setup
-    cohort_ch = Channel.fromPath("${projectDir}/data/test_cohorts.csv")
+    cohort_ch = Channel.fromPath("${projectDir}/data/cohorts.csv")
     .splitCsv(header: true)
     .map { row -> 
         // assing build by cohort name
@@ -29,5 +29,5 @@ workflow {
     COHORT_PROCESSOR(cohort_ch, dbSNP_dir)
 
     // execute stage 2 using outputs from stage 1
-    //META_ANALYST(COHORT_PROCESSOR.out.merged_sumstats, COHORT_PROCESSOR.out.munged_sumstats, dbSNP_dir)
+    META_ANALYST(COHORT_PROCESSOR.out.merged_sumstats, COHORT_PROCESSOR.out.munged_sumstats, dbSNP_dir)
 }
