@@ -1,9 +1,12 @@
 # GWAS meta-analysis of adolescent-onset depression
 
 This repository contains a Nextflow pipeline to QC and meta-analyse multi-ancestry GWAS sumstats. The pipeline is set up to perform:
+- harmonising sumstats and matching to dbSNP ref panel
 - cross-ancestry meta-analysis with `MR-MEGA`
-- ancestry-stratified and phenotype ascertainment-stratiefied meta-analyses with `METAL`
+- ancestry-stratified and phenotype ascertainment-stratified meta-analyses with `METAL`
 - a series of leave-one-out meta-analyses for downstream methods like PRS and MR
+- QC checks including inflation/stratification statistics, EAF correlations, QQ plots
+- downstream analyses including `LDSC`, `SBAYES/S/RC`
 
 The pipeline is configured to run on the `Eddie` HPCC system which uses `SGE` job scheduling. After starting an interactive session in `tmux`, load the Nexflow module: `module load roslin/nextflow/25.10.2`
 
