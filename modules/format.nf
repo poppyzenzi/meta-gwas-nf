@@ -2,7 +2,7 @@
 
 process FORMAT_SUMSTATS {
     tag "${cohort}_${ancestry}"
-    publishDir "${params.resultsDir}", mode: 'copy'
+    publishDir "${params.resultsDir}/formatted_sumstats", mode: 'copy'
 
     input:
     tuple val(cohort), val(ancestry), val(build), val(ascertainment), path(raw_sumstats)
@@ -11,58 +11,61 @@ process FORMAT_SUMSTATS {
     tuple val(cohort), val(ancestry), val(build), val(ascertainment), path("${cohort}_${ancestry}_${build}_formatted.txt"), emit: formatted_stats
 
     script:
-    build = (cohort =~ /NORDIC|TRAILS|RAINE|GLAD|ALLOFUS/) ? "b38" : "b37"
-    """
-    LC_ALL=C gzip -dc -f ${raw_sumstats} | awk -v cohort="${cohort}" '
-    BEGIN {
-        map["CHR"] = "CHROM CHR"; map["POS"] = "GENPOS POS BP"; map["SNP"] = "SNP ID";
-        map["EA"] = "EA A1 ALLELE1"; map["NEA"] = "NEA A2 ALLELE0";
-        map["EAF"] = "EAF A1FREQ FREQ";
-        map["EAFCA"] = "EAFCA A1FREQ_CASES";
-        map["EAFCO"] = "EAFCO A1FREQ_CONTROLS";
-        map["BETA"] = "BETA LOG(OR) LOG_OR LOG-OR";
-        map["OR"] = "OR";
-        map["SE"] = "SE"; map["P"] = "P PVAL"; map["LOG10P"] = "LOG10P";
-        map["N"] = "N N_TOTAL"; map["NCA"] = "NCA N_CASES"; map["NCO"] = "NCO N_CONTROLS";
-        map["RSID"] = "RSID SNPRS RSID_HG38"; map["INFO"] = "INFO";
-    }
-    NR == 1 {
-        for (i=1; i<=NF; i++) { header[toupper(\$i)] = i }
-        c["CHR"]=f("CHR"); c["POS"]=f("POS"); c["SNP"]=f("SNP");
-        c["EA"]=f("EA"); c["NEA"]=f("NEA"); c["SE"]=f("SE");
-        c["BETA"]=f("BETA"); c["OR"]=f("OR"); c["P"]=f("P");
-        c["LOG10P"]=f("LOG10P"); c["N"]=f("N"); c["NCA"]=f("NCA"); c["NCO"]=f("NCO");
-        c["EAF"]=f("EAF"); c["EAFCA"]=f("EAFCA"); c["EAFCO"]=f("EAFCO");
-        c["RSID"]=f("RSID"); c["INFO"]=f("INFO");
-        print "CHR", "POS", "SNP", "RSID", "EA", "NEA", "EAF", "BETA", "SE", "P", "N", "INFO"
-        next
-    }
-    {
-        chr=\$c["CHR"];
-        gsub(/^chr/,"",chr); if(chr=="X") chr="23";
-        pos=\$c["POS"]; snp=\$c["SNP"]; ea=\$c["EA"]; nea=\$c["NEA"]; se=\$c["SE"];
-        
-        if(c["BETA"]) beta=\$c["BETA"]; else beta=log(\$c["OR"]);
-        if(c["P"]) pval=\$c["P"]; else pval=exp(-\$c["LOG10P"] * log(10));
-        if(c["N"]) n=\$c["N"]; else n=\$c["NCA"] + \$c["NCO"];
+        def build_val = (cohort =~ /NORDIC_LOO|TRAILS|RAINE|GLAD|ALLOFUS/) ? "b38" : "b37"
+        """
+        LC_ALL=C gzip -dc -f ${raw_sumstats} | awk -v cohort="${cohort}" '
+        BEGIN {
+            map["CHR"] = "CHROM CHR"; map["POS"] = "GENPOS POS BP POS_38"; map["SNP"] = "SNP ID";
+            map["EA"] = "EA A1 ALLELE1"; map["NEA"] = "NEA A2 ALLELE0";
+            map["EAF"] = "EAF A1FREQ FREQ";
+            map["EAFCA"] = "EAFCA A1FREQ_CASES";
+            map["EAFCO"] = "EAFCO A1FREQ_CONTROLS";
+            map["BETA"] = "BETA LOG(OR) LOG_OR LOG-OR";
+            map["OR"] = "OR";
+            map["SE"] = "SE"; map["P"] = "P PVAL"; map["LOG10P"] = "LOG10P";
+            map["N"] = "N N_TOTAL"; map["NCA"] = "NCA N_CASES N_CAS"; map["NCO"] = "NCO N_CONTROLS N_CON";
+            map["RSID"] = "RSID SNPRS RSID_HG38"; map["INFO"] = "INFO";
+        }
+        NR == 1 {
+            for (i=1; i<=NF; i++) { header[toupper(\$i)] = i }
+            c["CHR"]=f("CHR"); c["POS"]=f("POS"); c["SNP"]=f("SNP");
+            c["EA"]=f("EA"); c["NEA"]=f("NEA"); c["SE"]=f("SE");
+            c["BETA"]=f("BETA"); c["OR"]=f("OR"); c["P"]=f("P");
+            c["LOG10P"]=f("LOG10P"); c["N"]=f("N"); c["NCA"]=f("NCA"); c["NCO"]=f("NCO");
+            c["EAF"]=f("EAF"); c["EAFCA"]=f("EAFCA"); c["EAFCO"]=f("EAFCO");
+            c["RSID"]=f("RSID"); c["INFO"]=f("INFO");
+            print "CHR", "POS", "SNP", "RSID", "EA", "NEA", "EAF", "BETA", "SE", "P", "N", "INFO"
+            next
+        }
+        {
+            chr=\$c["CHR"];
+            gsub(/^chr/,"",chr); if(chr=="X") chr="23";
+            pos=\$c["POS"]; snp = (c["SNP"] ? \$c["SNP"] : chr":"pos); ea=\$c["EA"]; nea=\$c["NEA"]; se=\$c["SE"];
 
-        if (c["EAF"] && \$c["EAF"] != "NA" && \$c["EAF"] != "") eaf_val = \$c["EAF"];
-        else if (c["EAFCO"] && \$c["EAFCO"] != "NA" && \$c["EAFCO"] != "") eaf_val = \$c["EAFCO"];
-        else if (c["EAFCA"] && \$c["EAFCA"] != "NA" && \$c["EAFCA"] != "") eaf_val = \$c["EAFCA"];
-        else eaf_val = "NA";
+            if(c["BETA"]) beta=\$c["BETA"]; else if(c["OR"] && \$c["OR"] > 0) beta=log(\$c["OR"]); else beta="NA";
+	    if(c["P"]) pval=\$c["P"]; else pval=exp(-\$c["LOG10P"] * log(10));
+            if(c["N"]) n=\$c["N"]; else n=\$c["NCA"] + \$c["NCO"];
 
-        rsid = (c["RSID"] ? \$c["RSID"] : "NA");
-        info = (c["INFO"] ? \$c["INFO"] : "NA");
-        
-        print chr, pos, snp, rsid, ea, nea, eaf_val, beta, se, pval, n, info
-    }
-    function f(s) {
-        split(map[s], a, " ");
-        for (j in a) { if (header[a[j]]) return header[a[j]] }
-        return 0
-    }
-    ' > ${cohort}_${ancestry}_${build}_formatted.txt
-    """
+            if (c["EAF"] && \$c["EAF"] != "NA" && \$c["EAF"] != "") eaf_val = \$c["EAF"];
+            else if (c["EAFCO"] && \$c["EAFCO"] != "NA" && \$c["EAFCO"] != "") eaf_val = \$c["EAFCO"];
+            else if (c["EAFCA"] && \$c["EAFCA"] != "NA" && \$c["EAFCA"] != "") eaf_val = \$c["EAFCA"];
+            else eaf_val = "NA";
+
+            rsid = (c["RSID"] ? \$c["RSID"] : "NA");
+            info = (c["INFO"] ? \$c["INFO"] : "NA");
+
+            if(beta == "NA" || se == "NA" || se == 0) next;
+print chr, pos, snp, rsid, ea, nea, eaf_val, beta, se, pval, n, info
+        }
+
+        function f(s) {
+            split(map[s], a, " ");
+            for (j in a) { if (header[a[j]]) return header[a[j]] }
+            return 0
+        }
+        ' > ${cohort}_${ancestry}_${build_val}_formatted.txt
+        """
+
 }
 
 process PREP_CORR {
@@ -189,14 +192,15 @@ process FINAL_QC_REPORT_METAL {
 
     mapping <- c(
         "MarkerName" = "varID",
-        "Allele1"    = "EA",
-        "Allele2"    = "NEA",
-        "Freq1"      = "EAF",
-        "FreqSE"     = "EAF_SE",
-        "Effect"     = "BETA",
-        "StdErr"     = "SE",
-        "P-value"    = "P",
-        "RSID"       = "rsID"
+        "POS"  = "BP",
+        "Allele1" = "EA",
+        "Allele2" = "NEA",
+        "Freq1"   = "EAF",
+        "FreqSE"  = "EAF_SE",
+        "Effect"  = "BETA",
+        "StdErr"  = "SE",
+        "P-value"  = "P",
+	"RSID"	  = "rsID"
     )
 
     # rename only the columns that exist
@@ -207,10 +211,20 @@ process FINAL_QC_REPORT_METAL {
     if ("EA" %in% names(dt)) dt[, EA := toupper(EA)]
     if ("NEA" %in% names(dt)) dt[, NEA := toupper(NEA)]
 
+    # sort by chr and bp
+    setorder(dt, CHR, BP)
+
     # set col order
-    desired_lead_cols <- c("varID", "rsID", "CHR", "POS", "EA", "NEA")
-    final_order <- intersect(desired_lead_cols, names(dt))
-    setcolorder(dt, final_order)
+    canonical_order <- c(
+        "CHR","BP","varID","rsID","EA","NEA",
+        "EAF","EAF_SE","BETA","SE","P",
+        "N","Z","MAF",
+        "INFO","Direction"
+    )
+
+    existing <- canonical_order[canonical_order %in% names(dt)]
+    setcolorder(dt, c(existing, setdiff(names(dt), existing)))
+
 
     report_content <- paste0("=== QC Report for: ${meta_label} ===\\n",
                              "Original SNPs: ", orig_count, "\\n",
@@ -305,3 +319,27 @@ process FINAL_QC_REPORT_MRMEGA {
     """
 }
 
+process FORMAT_MA {
+    tag "${label}"
+    publishDir "${params.resultsDir}/gctb_input", mode: 'copy'
+
+    input:
+    tuple val(label), path(sumstats_gz)
+
+    output:
+    tuple val(label), path("${label}.ma"), emit: ma_file
+
+    script:
+    """
+    gunzip -c ${sumstats_gz} | awk '
+    BEGIN { FS="[[:space:]\\t]+"; OFS="\\t" }
+    NR == 1 {
+        # Define the header for GCTB
+        print "SNP", "A1", "A2", "freq", "b", "se", "p", "N"
+        next
+    }
+    {
+        print \$4, \$5, \$6, \$7, \$9, \$10, \$11, \$12
+    }' > ${label}.ma
+    """
+}

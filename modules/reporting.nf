@@ -32,31 +32,25 @@ process CORR_EAF {
     # combine tab sep files
     cat headers.txt combined_temp.txt > final_matrix.txt
 
-    Rscript - <<EOF
+    Rscript - <<'EOF'
+    library(WGCNA)
     library(data.table)
-    dt <- fread("final_matrix.txt", header = TRUE, na.strings="NA", sep="\\t")
 
-    if (nrow(dt) == 0) stop("The matrix is empty!")
+    # enable multi-threading — matches cpus allocation
+    WGCNA::enableWGCNAThreads(nThreads = 8)
 
-    # make cols numeric
+    dt <- fread("final_matrix.txt", header = TRUE, na.strings = "NA", sep = "\t")
     cols <- names(dt)[-1]
     dt[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
-
     mat <- as.matrix(dt[, ..cols])
 
-    # correlation matrix
-    corr_matrix <- cor(mat, use = "pairwise.complete.obs")
+    # corr matrix
+    corr_matrix <- WGCNA::cor(mat, use = "pairwise.complete.obs")
     write.csv(corr_matrix, "${group_label}_eaf_corr.csv")
 
     # overlap counts 
-    count_overlap <- function(x, y) sum(!is.na(x) & !is.na(y))
-    overlap_mat <- matrix(NA, nrow=length(cols), ncol=length(cols), dimnames=list(cols, cols))
-    for(i in seq_along(cols)) {
-        for(j in seq_along(cols)) {
-            overlap_mat[i,j] <- count_overlap(mat[,i], mat[,j])
-        }
-    }
-    write.csv(overlap_mat, "${group_label}_overlap_counts.csv")
+    overlap_mat <- crossprod(!is.na(mat))
+    write.csv(as.data.frame(overlap_mat), "${group_label}_overlap_counts.csv")
     EOF
     """
 }
@@ -391,5 +385,157 @@ process TABULATE_EXTERNAL_RG {
 
     write.table(results, "ldsc_correlation_results_table.txt", sep = "\t", row.names = FALSE, quote = FALSE)
     write_csv(results, "master_RG_results_for_plotting.csv")
+    """
+}
+
+process REPORT_LIABILITY_H2 {
+    publishDir "${params.resultsDir}/reports", mode: 'copy'
+
+    input:
+    path(par_res_files) // a list of all .parRes files from sbayess
+
+    output:
+    path("liability_h2_results.txt"), emit: h2_report
+
+    script:
+    """
+    #!/usr/bin/env Rscript
+    library(stats)
+    library(data.table)
+
+    h2_obs_to_liab <- function(h2_obs, pop_prev, samp_prev) {
+    zg <- dnorm(qnorm(pop_prev))
+    h2_obs * pop_prev^2 * (1 - pop_prev)^2 / (samp_prev * (1 - samp_prev) * zg^2)
+    }
+
+    read_hsq_from_file <- function(file_path) {
+    lines <- readLines(file_path)
+    hsq_line <- grep("^\\\\s*hsq", lines, value = TRUE)[1]
+    parts <- strsplit(trimws(hsq_line), "\\\\s+")[[1]]
+    list(mean = as.numeric(parts[2]), sd = as.numeric(parts[3]))
+    }
+
+    # load sample prevalences from external file
+    samp_prevs <- fread("${params.prevalence_file}", header = TRUE)
+    samp_prev_map <- setNames(samp_prevs\$samp_prev, samp_prevs\$trait)
+
+    # population prevalences to test
+    pop_prevs <- c(0.05, 0.10, 0.15, 0.20)
+
+    results <- data.frame()
+    files <- list.files(pattern = "*.parRes")
+
+    for (f in files) {
+    trait <- gsub('^sbayess_', '', gsub('_QC_passed.*[.]parRes\$', '', f))
+
+    if (!trait %in% names(samp_prev_map)) next
+
+    hsq_vals <- read_hsq_from_file(f)
+    samp <- samp_prev_map[[trait]]
+
+    for (pop in pop_prevs) {
+        zg           <- dnorm(qnorm(pop))
+        scale_factor <- (pop^2 * (1 - pop)^2) / (samp * (1 - samp) * zg^2)
+        h2_liab      <- hsq_vals\$mean * scale_factor
+        h2_liab_se   <- hsq_vals\$sd   * scale_factor
+
+        results <- rbind(results, data.frame(
+        Trait            = trait,
+        pop_prev         = pop,
+        samp_prev        = samp,
+        hsq_observed     = hsq_vals\$mean,
+        hsq_observed_sd  = hsq_vals\$sd,
+        hsq_liability    = h2_liab,
+        hsq_liability_se = h2_liab_se
+        ))
+    }
+    }
+
+    write.table(results, 'liability_h2_results.txt', sep='\\t', quote=FALSE, row.names=FALSE)
+    """
+
+}
+
+process REPORT_LIABILITY_H2_NONEUR {
+    publishDir "${params.resultsDir}/reports", mode: 'copy'
+
+    input:
+    path(ldsc_log_files)
+
+    output:
+    path("liability_h2_ldsc_noneur.txt"), emit: h2_report
+
+    script:
+    """
+    #!/usr/bin/env Rscript
+    library(data.table)
+
+    h2_obs_to_liab <- function(h2_obs, pop_prev, samp_prev) {
+        zg <- dnorm(qnorm(pop_prev))
+        h2_obs * pop_prev^2 * (1 - pop_prev)^2 / (samp_prev * (1 - samp_prev) * zg^2)
+    }
+
+    read_h2_from_ldsc_log <- function(log_path) {
+        lines <- readLines(log_path)
+        h2_line <- grep("^Total Observed scale h2:", lines, value = TRUE)[1]
+        if (is.na(h2_line)) return(NULL)
+        nums <- regmatches(h2_line, gregexpr("-?[0-9]+[.][0-9]+", h2_line))[[1]]
+        list(mean = as.numeric(nums[1]), sd = as.numeric(nums[2]))
+    }
+
+    samp_prevs <- fread("${params.prevalence_file}", header = TRUE)
+    samp_prev_map <- setNames(samp_prevs\$samp_prev, samp_prevs\$trait)
+
+    pop_prevs <- c(0.05, 0.10, 0.15, 0.20)
+
+    results <- data.frame()
+    files <- list.files(pattern = '[A-Z].*_h2[.]log\$')
+
+    for (f in files) {
+        trait <- sub("_h2[.]log", "", f)
+
+        if (!trait %in% names(samp_prev_map)) next
+
+        h2_vals <- read_h2_from_ldsc_log(f)
+        if (is.null(h2_vals)) next
+
+        samp <- samp_prev_map[[trait]]
+
+        for (pop in pop_prevs) {
+            zg           <- dnorm(qnorm(pop))
+            scale_factor <- (pop^2 * (1 - pop)^2) / (samp * (1 - samp) * zg^2)
+            h2_liab      <- h2_vals\$mean * scale_factor
+            h2_liab_se   <- h2_vals\$sd   * scale_factor
+
+            results <- rbind(results, data.frame(
+                Trait            = trait,
+                Method           = "LDSC",
+                pop_prev         = pop,
+                samp_prev        = samp,
+                hsq_observed     = h2_vals\$mean,
+                hsq_observed_sd  = h2_vals\$sd,
+                hsq_liability    = h2_liab,
+                hsq_liability_se = h2_liab_se
+            ))
+        }
+    }
+
+    write.table(results, 'liability_h2_ldsc_noneur.txt', sep='\\t', quote=FALSE, row.names=FALSE)
+    """
+}
+
+process MERGE_LIABILITY_H2 {
+    publishDir "${params.resultsDir}/reports", mode: 'copy'
+
+    input:
+    path(h2_files)
+
+    output:
+    path("liability_h2_all.txt")
+
+    script:
+    """
+    head -1 \$(ls *.txt | head -1) > liability_h2_all.txt
+    for f in *.txt; do tail -n +2 "\$f" >> liability_h2_all.txt; done
     """
 }

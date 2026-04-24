@@ -138,6 +138,27 @@ process LDSC_H2_META {
     """
 }
 
+process LDSC_H2_META_NONEUR {
+    tag "${meta_label}"
+    publishDir "${params.resultsDir}/meta_analysis/h2", mode: 'copy'
+
+    input:
+    tuple val(meta_label), path(munged_file), val(ld_code)
+
+    output:
+    path "${meta_label}_h2.log", emit: log
+
+    script:
+    """
+    python ${params.ldsc_path}/ldsc.py \\
+        --h2 ${munged_file} \\
+        --ref-ld ${params.ukbb_ld_dir}/UKBB.${ld_code}.rsid \\
+        --w-ld ${params.ukbb_ld_dir}/UKBB.${ld_code}.rsid \\
+        --out ${meta_label}_h2
+    """
+}
+
+
 process LDSC_RG_EXTERNAL {
     tag "${meta_label}"
     publishDir "${params.resultsDir}/meta_analysis/external_rg", mode: 'copy'
@@ -161,3 +182,22 @@ process LDSC_RG_EXTERNAL {
     """
 }
 
+process LDSC_RG_ASCERTAINMENT {
+    tag "${label_a}_x_${label_b}"
+    publishDir "${params.resultsDir}/meta_analysis/rg_ascertainment", mode: 'copy'
+
+    input:
+    tuple val(label_a), path(munged_a), val(label_b), path(munged_b)
+
+    output:
+    path("${label_a}_x_${label_b}_rg.log"), emit: rg_log
+
+    script:
+    """
+    python ${params.ldsc_path}/ldsc.py \\
+        --rg ${munged_a},${munged_b} \\
+        --ref-ld-chr ${params.ld_ref_dir}/ \\
+        --w-ld-chr ${params.ld_ref_dir}/ \\
+        --out ${label_a}_x_${label_b}_rg
+    """
+}

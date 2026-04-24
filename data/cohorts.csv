@@ -37,7 +37,7 @@ MCS,EUR,mcs/SMFQ/EUR/MCS_SMFQ_EUR_corrected.txt,prospective
 MCS,SAS,mcs/SMFQ/SAS/MCS_SMFQ_SAS_corrected.txt,prospective
 MOBA,EUR,moba/MoBa_Results_toshare/MoBa_sMFQ_16082024.txt,prospective
 MUSP,EUR,musp/MUSP_DEPRESSION_111224,prospective
-NORDIC_LOO,EUR,nordic/METAANALYSIS_LOO_NOR_CHR_BP.TBL,register-based
+NORDIC_LOO,EUR,nordic/arvid/eoMDD_LOO_MOBA_13_03_26_clean.txt,register-based
 PGC,EUR,pgc/strict/daner_COL3NES1_STRICT,retrospective
 RAINE,EUR,raine/RaineStudy_YSR_20240808.regenie,prospective
 TEDS,EUR,teds/TEDS_adolDep_EUR_160724,prospective
