@@ -1,6 +1,0 @@
-cohort,ancestry,rel_path,ascertainment
-ALLOFUS,EUR,allofus/EUR_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
-ALLOFUS,AMR,allofus/AMR_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
-ALLOFUS,AFR,allofus/AFR_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
-ALLOFUS,EAS,allofus/EAS_rsid38_aod_str_mh1_strict_merged.regenie,retrospective
-NORDIC_LOO,EUR,nordic/METAANALYSIS_LOO_NOR_CHR_BP.TBL,register-based
