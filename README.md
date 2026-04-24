@@ -13,6 +13,7 @@ The pipeline is configured to run on the `Eddie` HPCC system which uses `SGE` jo
 The pipeline is controlled by the `master.nf` workflow which calls two subworkflows:
 1. `processor.nf` which performs all pre-meta-analysis QC formatting and diagnostics
 2. `analyst.nf` which performs the meta-analyses and post-hoc QC
+3. `downstream.nf` which performs gctb analyses for h2 and PRS
 
 The processes are arranged into the following modules:
 ```
